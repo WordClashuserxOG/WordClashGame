@@ -59,14 +59,26 @@ def new_session(chat_id: int, mode: str):
         "secret": None,
         "chat_id": chat_id,
         "mode": mode,
-        "round_scores": {}
+        "round_scores": {},
+        "cancelled": False
     }
 
 async def start_bot():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
-    # Start command in private chat
+    # /restart command
+    @dp.message(Command("restart"))
+    async def restart_command(message: types.Message):
+        chat_id = message.chat.id
+        if chat_id in sessions:
+            await message.answer("♻ Game restarting in 6 seconds...")
+            sessions[chat_id]["cancelled"] = True
+            await asyncio.sleep(6)
+            sessions.pop(chat_id, None)
+        await start_join_phase(chat_id, "rapid")  # default mode on restart
+
+    # /start command
     @dp.message(Command("start"))
     async def handle_start(message: types.Message):
         if message.chat.type == "private":
@@ -79,6 +91,10 @@ async def start_bot():
                 reply_markup=kb
             )
         else:
+            # clear any stuck session
+            if message.chat.id in sessions:
+                sessions.pop(message.chat.id, None)
+
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="⚡ Rapid Mode", callback_data=f"mode:rapid:{message.chat.id}")],
                 [InlineKeyboardButton(text="🎯 Round-wise Mode", callback_data=f"mode:round:{message.chat.id}")]
@@ -125,6 +141,10 @@ async def start_bot():
         await bot.send_message(s["chat_id"], "💡 Word is set! Players, start guessing!")
 
     async def start_join_phase(chat_id: int, mode: str):
+        # clear old session
+        if chat_id in sessions:
+            sessions.pop(chat_id, None)
+
         s = new_session(chat_id, mode)
         sessions[chat_id] = s
         s["state"] = "JOINING"
@@ -136,6 +156,8 @@ async def start_bot():
         s["join_msg_id"] = msg.message_id
 
         for t in range(JOIN_DURATION, 0, -1):
+            if s.get("cancelled"):
+                return
             joined_names = ", ".join([f"@{u[1]}" for u in s["joined"]]) or "_None yet_"
             try:
                 await bot.edit_message_text(
@@ -181,10 +203,8 @@ async def start_bot():
             s["leader"] = leader
             await bot.send_message(chat_id, f"🎯 Round {r}\n👑 Leader: @{leader[1]}! (Check your DM)")
             await bot.send_message(leader[0], "📝 You are the leader!\nSend `/word yourword` to set the secret word.")
-            # In real game, handle guessing and timing here...
             players = players[1:] + players[:1]  # rotate leader
 
-        # After rounds, send leaderboard
         if scores:
             sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
             msg = "🏆 Final Leaderboard:\n"
