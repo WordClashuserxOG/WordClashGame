@@ -14,6 +14,10 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
+import sys
+import traceback
+
+
 # Keep Alive Server (for Render/Host)
 def keep_alive():
     try:
@@ -218,7 +222,13 @@ async def start_bot():
             await bot.send_message(chat_id, msg)
 
     logger.info("Bot running...")
-    await dp.start_polling(bot)
+    logger.info("Starting bot polling...")
+    try:
+        await dp.start_polling(bot)
+    except Exception as e:
+        logger.error(f"Polling stopped due to error: {e}")
+        traceback.print_exc(file=sys.stdout)
+    logger.info("Bot polling ended unexpectedly!")
 
 if __name__ == "__main__":
     try:
